@@ -1,4 +1,7 @@
 const express = require("express");
+const mongoose = require("mongoose");
+require("dotenv").config();
+const Task = require("./models/Task");
 
 const app = express();
 const PORT = 5000;
@@ -12,91 +15,122 @@ app.use((req, res, next) => {
   next();
 });
 
-// In-memory Task Array
-let tasks = [
-  {
-    id: 1,
-    title: "Complete React Practical",
-    completed: false,
-  },
-];
+// MongoDB Connection
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log("✅ MongoDB Connected Successfully");
+  })
+  .catch((err) => {
+    console.log("❌ MongoDB Connection Failed");
+    console.log(err);
+  });
 
 // Home Route
 app.get("/", (req, res) => {
-  res.send("Task Manager API is Running!");
+  res.send("Task Manager API with MongoDB is Running!");
 });
 
-// =========================
 // GET - Read All Tasks
-// =========================
-app.get("/tasks", (req, res) => {
-  res.status(200).json(tasks);
+app.get("/tasks", async (req, res, next) => {
+  try {
+    const tasks = await Task.find();
+    res.status(200).json(tasks);
+  } catch (err) {
+    next(err);
+  }
 });
 
-// =========================
+
 // POST - Create Task
-// =========================
-app.post("/tasks", (req, res) => {
-  const newTask = {
-    id: tasks.length + 1,
-    title: req.body.title,
-    completed: false,
-  };
-
-  tasks.push(newTask);
-
-  res.status(201).json(newTask);
-});
-
-// =========================
-// PUT - Update Task
-// =========================
-app.put("/tasks/:id", (req, res) => {
-  const id = parseInt(req.params.id);
-
-  const task = tasks.find((t) => t.id === id);
-
-  if (!task) {
-    return res.status(404).json({
-      message: "Task not found",
+app.post("/tasks", async (req, res, next) => {
+  try {
+    const task = await Task.create({
+      title: req.body.title,
+      description: req.body.description,
+      priority: req.body.priority,
     });
+
+    res.status(201).json(task);
+  } catch (err) {
+    next(err);
   }
-
-  task.title = req.body.title;
-  task.completed = req.body.completed;
-
-  res.status(200).json(task);
 });
 
-// =========================
-// DELETE - Delete Task
-// =========================
-app.delete("/tasks/:id", (req, res) => {
-  const id = parseInt(req.params.id);
+// GET Task By ID
+app.get("/tasks/:id", async (req, res, next) => {
+  try {
+    const task = await Task.findById(req.params.id);
 
-  const index = tasks.findIndex((t) => t.id === id);
+    if (!task) {
+      return res.status(404).json({
+        message: "Task not found"
+      });
+    }
 
-  if (index === -1) {
-    return res.status(404).json({
-      message: "Task not found",
+    res.status(200).json(task);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// UPDATE Task
+app.put("/tasks/:id", async (req, res, next) => {
+  try {
+    const task = await Task.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      {
+        new: true,
+        runValidators: true
+      }
+    );
+
+    if (!task) {
+      return res.status(404).json({
+        message: "Task not found"
+      });
+    }
+
+    res.status(200).json(task);
+
+  } catch (err) {
+    next(err);
+  }
+});
+
+// DELETE Task
+app.delete("/tasks/:id", async (req, res, next) => {
+  try {
+    const task = await Task.findByIdAndDelete(req.params.id);
+
+    if (!task) {
+      return res.status(404).json({
+        message: "Task not found",
+      });
+    }
+
+    res.status(200).json({
+      message: "Task deleted successfully",
     });
+  } catch (err) {
+    next(err);
   }
-
-  tasks.splice(index, 1);
-
-  res.status(200).json({
-    message: "Task deleted successfully",
-  });
 });
 
-// =========================
-// Global Error Handler
-// =========================
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error(err);
+
+  if (err.name === "ValidationError") {
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  }
 
   res.status(500).json({
-    error: "Something went wrong!",
+    success: false,
+    message: "Internal Server Error",
   });
 });
 
